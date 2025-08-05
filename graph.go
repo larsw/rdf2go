@@ -210,6 +210,19 @@ func (g *Graph) Parse(reader io.Reader, mime string) error {
 		for s := range parser.IterTriples() {
 			g.AddTriple(rdf2term(s.Subject), rdf2term(s.Predicate), rdf2term(s.Object))
 		}
+	} else if parserName == "trig" {
+		// Parse TriG by creating a dataset and extracting the default graph
+		dataset := NewDataset(g.uri)
+		err := dataset.Parse(reader, mime)
+		if err != nil {
+			return err
+		}
+		// Add all quads from default graph to this graph
+		for quad := range dataset.IterQuads() {
+			if quad.Graph == nil {
+				g.AddTriple(quad.Subject, quad.Predicate, quad.Object)
+			}
+		}
 	} else {
 		return errors.New(parserName + " is not supported by the parser")
 	}
@@ -226,7 +239,7 @@ func (g *Graph) LoadURI(uri string) error {
 	if len(g.uri) == 0 {
 		g.uri = doc
 	}
-	q.Header.Set("Accept", "text/turtle;q=1,application/ld+json;q=0.5")
+	q.Header.Set("Accept", "application/trig;q=1,text/turtle;q=0.8,application/ld+json;q=0.5")
 	r, err := g.httpClient.Do(q)
 	if err != nil {
 		return err
@@ -256,6 +269,8 @@ func (g *Graph) Serialize(w io.Writer, mime string) error {
 	serializerName := mimeSerializer[mime]
 	if serializerName == "jsonld" {
 		return g.serializeJSONLD(w)
+	} else if serializerName == "trig" {
+		return g.serializeTrig(w)
 	}
 	// just return Turtle by default
 	return g.serializeTurtle(w)
@@ -364,5 +379,34 @@ func (g *Graph) serializeJSONLD(w io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(w, string(bytes))
+	return nil
+}
+
+// serializeTrig serializes the graph to TriG format (as default graph)
+func (g *Graph) serializeTrig(w io.Writer) error {
+	// Serialize as TriG with all triples in the default graph
+	fmt.Fprintln(w, "{")
+
+	triplesBySubject := make(map[string][]*Triple)
+	for triple := range g.IterTriples() {
+		s := encodeTerm(triple.Subject)
+		triplesBySubject[s] = append(triplesBySubject[s], triple)
+	}
+
+	for subject, triples := range triplesBySubject {
+		fmt.Fprintf(w, "  %s\n", subject)
+		for key, triple := range triples {
+			p := encodeTerm(triple.Predicate)
+			o := encodeTerm(triple.Object)
+
+			if key == len(triples)-1 {
+				fmt.Fprintf(w, "    %s %s .\n", p, o)
+				break
+			}
+			fmt.Fprintf(w, "    %s %s ;\n", p, o)
+		}
+	}
+
+	fmt.Fprintln(w, "}")
 	return nil
 }

@@ -3,7 +3,7 @@
 [![Build Status](https://api.travis-ci.org/deiu/rdf2go.svg?branch=master)](https://travis-ci.org/deiu/rdf2go)
 [![Coverage Status](https://coveralls.io/repos/github/deiu/rdf2go/badge.svg?branch=master)](https://coveralls.io/github/deiu/rdf2go?branch=master)
 
-Native golang parser/serializer from/to Turtle and JSON-LD.
+Native golang parser/serializer from/to Turtle, TriG, and JSON-LD.
 
 # Installation
 
@@ -136,12 +136,52 @@ abn := NewAnonNode()
 abn.String() // -> "_:n192853"
 ```
 
+## Working with datasets (TriG)
+
+### Creating and using datasets
+
+For working with multiple named graphs, you can use the Dataset type:
+
+```golang
+// Create a new dataset
+d := NewDataset("https://example.org/dataset")
+
+// Add triples to the default graph
+d.AddTriple(NewResource("alice"), NewResource("name"), NewLiteral("Alice"))
+
+// Add quads to named graphs
+graphName := NewResource("http://example.org/graph1")
+d.AddQuad(NewResource("bob"), NewResource("name"), NewLiteral("Bob"), graphName)
+
+// Get a specific named graph as a Graph
+namedGraph := d.GetGraph(graphName)
+
+// Get the default graph
+defaultGraph := d.GetDefaultGraph()
+
+// Get all named graph identifiers
+namedGraphs := d.GetNamedGraphs()
+```
+
+### Working with quads
+
+```golang
+// Create a quad (triple + named graph)
+quad := NewQuad(NewResource("subject"), NewResource("predicate"), NewLiteral("object"), NewResource("graph"))
+
+// Convert a triple to a quad (default graph)
+triple := NewTriple(NewResource("a"), NewResource("b"), NewResource("c"))
+quad := NewTripleQuad(triple)
+
+// Convert a quad back to a triple (ignoring the graph)
+backToTriple := quad.ToTriple()
+```
 
 ## Parsing data
 
 The parser takes an `io.Reader` as first parameter, and the string containing the mime type as the second parameter.
 
-Currently, the supported parsing formats are Turtle (with mime type `text/turtle`) and JSON-LD (with mime type `application/ld+json`).
+Currently, the supported parsing formats are Turtle (with mime type `text/turtle`), TriG (with mime type `application/trig`), and JSON-LD (with mime type `application/ld+json`).
 
 ### Parsing Turtle from an io.Reader
 
@@ -154,6 +194,21 @@ g := NewGraph(baseUri)
 
 // r is of type io.Reader
 g.Parse(r, "text/turtle")
+```
+
+### Parsing TriG from an io.Reader
+
+```golang
+// Set a base URI
+baseUri := "https://example.org/foo"
+
+// For parsing TriG into a single graph (default graph only)
+g := NewGraph(baseUri)
+g.Parse(r, "application/trig")
+
+// For parsing TriG into a dataset with multiple named graphs
+d := NewDataset(baseUri)
+d.Parse(r, "application/trig")
 ```
 
 ### Parsing JSON-LD from an io.Reader
@@ -169,11 +224,11 @@ g := NewGraph(baseUri)
 g.Parse(r, "application/ld+json")
 ```
 
-### Parsing either Turtle or JSON-LD from a URI on the Web
+### Parsing either Turtle, TriG, or JSON-LD from a URI on the Web
 
-In this case you don't have to specify the mime type, as the internal http client will try to content negotiate to either Turtle or JSON-LD. An error will be returned if it fails.
+In this case you don't have to specify the mime type, as the internal http client will try to content negotiate to either TriG, Turtle, or JSON-LD. An error will be returned if it fails.
 
-**Note:** The `NewGraph()` function accepts an optional parameter called `skipVerify` that is used to tell the internal http client whether or not to ignore bad/self-signed server side certificates. By default, it will not check if you omit this parameter, or if you set it to `true`.
+**Note:** The `NewGraph()` and `NewDataset()` functions accept an optional parameter called `skipVerify` that is used to tell the internal http client whether or not to ignore bad/self-signed server side certificates. By default, it will not check if you omit this parameter, or if you set it to `true`.
 
 ```golang
 // Set a base URI
@@ -191,6 +246,13 @@ err := g.LoadURI(uri)
 if err != nil {
 	// deal with the error
 }
+
+// Or use a dataset for multiple named graphs
+d := NewDataset(uri, skipVerify)
+err = d.LoadURI(uri)
+if err != nil {
+	// deal with the error
+}
 ```
 
 
@@ -199,7 +261,7 @@ if err != nil {
 
 The serializer takes an `io.Writer` as first parameter, and the string containing the mime type as the second parameter.
 
-Currently, the supported serialization formats are Turtle (with mime type `text/turtle`) and JSON-LD (with mime type `application/ld+json`).
+Currently, the supported serialization formats are Turtle (with mime type `text/turtle`), TriG (with mime type `application/trig`), and JSON-LD (with mime type `application/ld+json`).
 
 
 ### Serializing to Turtle
@@ -216,6 +278,28 @@ g.Add(triple)
 
 // w is of type io.Writer
 g.Serialize(w, "text/turtle")
+```
+
+### Serializing to TriG
+
+```golang
+// Set a base URI
+baseUri := "https://example.org/foo"
+
+// Serialize a graph to TriG (as default graph)
+g := NewGraph(baseUri)
+triple := NewTriple(NewResource("a"), NewResource("b"), NewResource("c"))
+g.Add(triple)
+
+// w is of type io.Writer
+g.Serialize(w, "application/trig")
+
+// Serialize a dataset to TriG (with multiple named graphs)
+d := NewDataset(baseUri)
+d.AddTriple(NewResource("a"), NewResource("b"), NewResource("c")) // default graph
+d.AddQuad(NewResource("x"), NewResource("y"), NewResource("z"), NewResource("graph1")) // named graph
+
+d.Serialize(w, "application/trig")
 ```
 
 ### Serializing to JSON-LD

@@ -231,3 +231,35 @@ func TestGraphMerge(t *testing.T) {
 	assert.NotEqual(t,nil,g.One(NewResource("g"),NewResource("b2"),NewResource("e")))
 	assert.NotEqual(t,nil,g.One(NewResource("g"),NewResource("b2"),NewResource("c")))
 }
+
+func TestGraphParseTrig(t *testing.T) {
+	trigData := `{
+  <#me> <http://xmlns.com/foaf/0.1/name> "Test" .
+  <#me> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://xmlns.com/foaf/0.1/Person> .
+}`
+	g := NewGraph(testUri)
+	err := g.Parse(strings.NewReader(trigData), "application/trig")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, g.Len())
+}
+
+func TestGraphSerializeTrig(t *testing.T) {
+	g := NewGraph(testUri)
+	g.AddTriple(NewResource("http://example.org/alice"), NewResource("http://xmlns.com/foaf/0.1/name"), NewLiteral("Alice"))
+	g.AddTriple(NewResource("http://example.org/alice"), NewResource("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), NewResource("http://xmlns.com/foaf/0.1/Person"))
+	
+	var buf bytes.Buffer
+	err := g.Serialize(&buf, "application/trig")
+	assert.NoError(t, err)
+	
+	output := buf.String()
+	assert.Contains(t, output, "Alice")
+	assert.Contains(t, output, "{")
+	assert.Contains(t, output, "}")
+	
+	// Verify it can be parsed back
+	g2 := NewGraph(testUri)
+	err = g2.Parse(strings.NewReader(output), "application/trig")
+	assert.NoError(t, err)
+	assert.Equal(t, g.Len(), g2.Len())
+}
